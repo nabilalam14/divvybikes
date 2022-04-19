@@ -1,0 +1,135 @@
+---
+title: "Bike Trips Case Study"
+author: "Nabil Alam"
+date: '2022-04-05'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## The Scenario
+You are a junior data analyst working in the marketing analyst team at Cyclistic, a bike-share company in Chicago. The director of marketing believes the company’s future success depends on maximizing the number of annual memberships. Therefore, your team wants to understand how casual riders and annual members use Cyclistic bikes differently. From these insights, your team will design a new marketing strategy to convert casual riders into annual members. But first, Cyclistic executives must approve your recommendations, so they must be backed up with compelling data insights and professional data visualizations.
+## The Goal
+1. How do annual members and casual riders use Cyclistic bikes differently?
+2. Why would casual riders buy Cyclistic annual memberships?
+3. How can Cyclistic use digital media to influence casual riders to become members?
+
+## The Dataset
+12 months (2020-10 to 2021-09) of bike-sharing data from Motivate International Inc. who operates the City of Chicago’s Divvy bicycle sharing service.
+
+Used with permission under [license](https://www.divvybikes.com/data-license-agreement)
+
+### Importing Data
+First I will import the datasets and the necessary libraries.
+```{r}
+library(readr)
+oct2020 <- read_csv("202010-divvy-tripdata.csv")
+nov2020 <- read_csv("202011-divvy-tripdata.csv")
+dec2020 <- read_csv("202012-divvy-tripdata.csv")
+jan2021 <- read_csv("202101-divvy-tripdata.csv")
+feb2021 <- read_csv("202102-divvy-tripdata.csv")
+mar2021 <- read_csv("202103-divvy-tripdata.csv")
+apr2021 <- read_csv("202104-divvy-tripdata.csv")
+may2021 <- read_csv("202105-divvy-tripdata.csv")
+jun2021 <- read_csv("202106-divvy-tripdata/202106-divvy-tripdata.csv")
+jul2021 <- read_csv("202107-divvy-tripdata.csv")
+aug2021 <- read_csv("202108-divvy-tripdata.csv")
+sep2021 <- read_csv("202109-divvy-tripdata.csv/202109-divvy-tripdata.csv")
+library(tidyverse)
+library(tidyr)
+library(lubridate)
+library(dplyr)
+library("here")
+library("skimr")
+library("janitor")
+```
+
+### Cleaning Data
+Use the str() function to show the structure of the dataframes which shows the list of columns and data types (numeric, character, etc)
+
+```{r}
+str(oct2020)
+str(nov2020)
+str(dec2020)
+str(jan2021)
+str(feb2021)
+str(mar2021)
+str(apr2021)
+str(may2021)
+str(jun2021)
+str(jul2021)
+str(aug2021)
+str(sep2021)
+```
+Column data types do not match in the October, November and December 2020 datasets. Convert start_station_id and end_station_id columns from dohubles to charchters like the rest of the data frames so we can merge all the data into one frame. 
+```{r}
+oct2020 <- mutate(oct2020, start_station_id=as.character(start_station_id), end_station_id=as.character(end_station_id))   
+nov2020 <- mutate(nov2020, start_station_id=as.character(start_station_id), end_station_id=as.character(end_station_id))
+dec2020 <- mutate(dec2020, start_station_id=as.character(start_station_id), end_station_id=as.character(end_station_id))
+str(oct2020)
+str(nov2020)
+str(dec2020)
+```
+### Merge the data frames from the 12 months and preview it
+```{r}
+all_trips <- bind_rows(oct2020, nov2020, dec2020, jan2021, feb2021, mar2021, apr2021, may2021, jun2021, jul2021, aug2021, sep2021)
+colnames(all_trips)  #List of column names
+nrow(all_trips)  #How many rows are in data frame?
+dim(all_trips)  #Dimensions of the data frame?
+head(all_trips)  #See the first 6 rows of data frame.  Also tail(all_trips)
+str(all_trips)  #See list of columns and data types (numeric, character, etc)
+summary(all_trips)  #Statistical summary of data. Mainly for numerics
+```
+
+
+#### Group data by rideable_type (classic, docked, and electric) 
+```{r}
+all_trips %>% group_by(rideable_type) %>% summarize(total=length(rideable_type))
+```
+#### Group data by member types (member and casual)
+```{r}
+all_trips %>% group_by(member_casual) %>% summarize(total=length(member_casual))
+```
+##### Group data by start_station_id
+```{r}
+all_trips %>% group_by(start_station_id) %>% summarize(total=length(start_station_id))
+```
+#### Remove trips with negative time for rides
+```{r}
+all_trips_cleaned <- all_trips %>% filter(as.double(difftime(ended_at, started_at, units="hours")) > 0)
+```
+#### Average the coordinates for the start_station_name and end_station_name
+```{r}
+all_trips_cleaned_v2 <- all_trips_cleaned %>% group_by(start_station_name) %>% drop_na() %>% mutate(start_lat=mean(start_lat),start_lng=mean(start_lng))
+all_trips_cleaned_v2 <- all_trips_cleaned_v2 %>% group_by(end_station_name) %>% drop_na() %>% mutate(end_lat=mean(end_lat),end_lng=mean(end_lng))
+```
+#### Remove trips with missing station names or ids
+```{r}
+all_trips_na <- all_trips_cleaned %>% filter(is.na(start_station_name) | is.na(end_station_name) | is.na(start_station_id) | is.na(end_station_id))
+```
+#### Merge the two data frames back together
+```{r}
+all_trips_cleaned_v3 <- bind_rows(all_trips_cleaned_v2, all_trips_na)
+```
+#### Remove trips where the start staion id is the same as the end station id
+```{r}
+all_trips_cleaned_v4 <- all_trips_cleaned_v3 %>% filter(start_station_name != end_station_name)
+```
+
+#### Create a new column for Ride Length
+```{r}
+all_trips_cleaned_v5 <- mutate(all_trips_cleaned_v4, ride_length_secs=as.numeric(difftime(ended_at,started_at,units = "secs")))
+```
+#### Merge the two data frames back together
+```{r}
+all_trips_cleaned_v6 <- all_trips_cleaned_v5 %>% ungroup() %>% select(-c("start_station_id", "end_station_id", "end_station_name", "start_station_name"))
+```
+#### Write data frame to a csv file for further anaysis with Tableau
+```{r}
+write_csv(all_trips_cleaned_v6, "all_trips_cleaned.csv")
+```
+### Presenting Analysis
+More analysis of the data using charts created with Tableau can be found in my [presentation](https://docs.google.com/presentation/d/1JIbEkJ14A1go5wWFx4HzyUXpsmDYgkuvbaQZTvMDrNo/edit?usp=sharing).
